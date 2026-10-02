@@ -119,6 +119,7 @@ class SmolLM {
     }
 
     private var nativePtr = 0L
+    private var stopped = false
 
     /**
      * Provides default values for inference parameters. These values are used when the
@@ -257,10 +258,11 @@ class SmolLM {
         private set
 
     fun getResponseAsFlow(query: String): Flow<String> = flow {
+        stopped = false
         verifyHandle()
         usedJinjaTemplate = startCompletion(nativePtr, query)
         var piece = completionLoop(nativePtr)
-        while (piece != "[EOG]") {
+        while (piece != "[EOG]" && !stopped) {
             emit(piece)
             piece = completionLoop(nativePtr)
         }
@@ -276,16 +278,21 @@ class SmolLM {
      * @throws IllegalStateException if the model is not loaded.
      */
     fun getResponse(query: String): String {
+        stopped = false
         verifyHandle()
         usedJinjaTemplate = startCompletion(nativePtr, query)
         var piece = completionLoop(nativePtr)
         var response = ""
-        while (piece != "[EOG]") {
+        while (piece != "[EOG]" && !stopped) {
             response += piece
             piece = completionLoop(nativePtr)
         }
         stopCompletion(nativePtr)
         return response
+    }
+
+    fun stop(){
+        stopped = true
     }
 
     /**

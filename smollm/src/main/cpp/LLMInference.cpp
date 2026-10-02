@@ -67,6 +67,13 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, b
 }
 
 void
+LLMInference::_updatePrevLen() {
+    int len = llama_chat_apply_template(_chatTemplate, _messages.data(), _messages.size(), false,
+                                        nullptr, 0);
+    _prevLen = len < 0 ? 0 : (size_t) len;
+}
+
+void
 LLMInference::addChatMessage(const char *message, const char *role) {
     _messages.push_back({strdup(role), strdup(message)});
 }
@@ -83,49 +90,78 @@ LLMInference::getContextSizeUsed() const {
 
 bool
 LLMInference::startCompletion(const char *query) {
+    bool usedJinja = true;
     if (!_storeChats) {
         _formattedMessages.clear();
         _formattedMessages = std::vector<char>(llama_n_ctx(_ctx));
+        _prevLen = 0;
+        llama_memory_clear(llama_get_memory(_ctx), true);
     }
     _responseGenerationTime = 0;
     _responseNumTokens = 0;
-    addChatMessage(query, "user");
-    // apply the chat-template
-    std::vector<common_chat_msg> messages;
-    for (const llama_chat_message& message : _messages) {
-        common_chat_msg msg;
-        msg.role    = message.role;
-        msg.content = message.content;
-        messages.push_back(msg);
+    _response.clear();
+    _cacheResponseTokens.clear();
+
+    std::string queryString(query);
+    if (queryString.find("<turn|") != std::string::npos || queryString.find("<start_of_turn>") != std::string::npos) {
+         _promptTokens = common_tokenize(llama_model_get_vocab(_model), queryString, true, true);
+    } else {
+        addChatMessage(query, "user");
+
+        int new_len = llama_chat_apply_template(
+            _chatTemplate,
+            _messages.data(),
+            _messages.size(),
+            true,
+            _formattedMessages.data(),
+            _formattedMessages.size()
+        );
+        if (new_len > (int)_formattedMessages.size()) {
+            _formattedMessages.resize(new_len);
+            new_len = llama_chat_apply_template(
+                _chatTemplate,
+                _messages.data(),
+                _messages.size(),
+                true,
+                _formattedMessages.data(),
+                _formattedMessages.size()
+            );
+        }
+
+        if (new_len < 0) {
+            LOGe("llama_chat_apply_template() failed, using fallback formatting");
+            std::stringstream fallback;
+            usedJinja = false;
+            for (auto &msg : _messages) {
+                fallback << msg.role << ": " << msg.content << "\n";
+            }
+            fallback << "assistant" << ":";
+            std::string prompt = fallback.str();
+            _promptTokens = common_tokenize(llama_model_get_vocab(_model), prompt, true, true);
+        } else {
+            // Incremental prompt: everything before _prevLen is already in the
+            // KV cache from earlier turns — only feed the new suffix (this turn's
+            // user message + template glue). BOS only on the very first chunk.
+            if (_prevLen > (size_t) new_len) {
+                _prevLen = 0;
+                llama_memory_clear(llama_get_memory(_ctx), true);
+            }
+            std::string prompt(_formattedMessages.begin() + _prevLen,
+                               _formattedMessages.begin() + new_len);
+            _promptTokens = common_tokenize(llama_model_get_vocab(_model), prompt,
+                                            /*add_special=*/_prevLen == 0, /*parse_special=*/true);
+        }
     }
-    auto templates = common_chat_templates_init(_model, _chatTemplate ? _chatTemplate : "");
-
-    common_chat_templates_inputs inputs;
-    inputs.messages = messages;
-
-    // Try Jinja rendering first with tools defined to prevent "tojson on Undefined" errors.
-    // If Jinja fails (e.g. unsupported filters like lstrip), fall back to legacy rendering.
-    inputs.use_jinja = true;
-    inputs.chat_template_kwargs["tools"] = "[]";
-
-    std::string prompt;
-    bool usedJinja = true;
-    try {
-        prompt = common_chat_templates_apply(templates.get(), inputs).prompt;
-    } catch (const std::exception &e) {
-        LOGe("Jinja template failed: %s — retrying with legacy renderer", e.what());
-        inputs.use_jinja = false;
-        inputs.chat_template_kwargs.clear();
-        prompt = common_chat_templates_apply(templates.get(), inputs).prompt;
-        usedJinja = false;
-    }
-    _promptTokens = common_tokenize(llama_model_get_vocab(_model), prompt, true, true);
-
     // create a llama_batch containing a single sequence
     // see llama_batch_init for more details
     _batch = new llama_batch();
     _batch->token = _promptTokens.data();
     _batch->n_tokens = _promptTokens.size();
+
+    // Generation had no logging at all, so a stall was indistinguishable from
+    // slowness in a logcat capture. Keep it to one line per turn.
+    LOGi("startCompletion: %zu prompt tokens, ctxUsed=%d",
+         _promptTokens.size(), llama_memory_seq_pos_max(llama_get_memory(_ctx), 0) + 1);
 
     return usedJinja;
 }
@@ -188,6 +224,9 @@ LLMInference::completionLoop() {
     _currToken = llama_sampler_sample(_sampler, _ctx, -1);
     if (llama_vocab_is_eog(llama_model_get_vocab(_model), _currToken)) {
         addChatMessage(strdup(_response.data()), "assistant");
+        if (_storeChats) {
+            _updatePrevLen();
+        }
         _response.clear();
         return "[EOG]";
     }
@@ -215,8 +254,9 @@ LLMInference::completionLoop() {
 
 void
 LLMInference::stopCompletion() {
-    if (_storeChats) {
+    if (_storeChats && !_response.empty()) {
         addChatMessage(_response.c_str(), "assistant");
+        _updatePrevLen();
     }
     _response.clear();
 }
