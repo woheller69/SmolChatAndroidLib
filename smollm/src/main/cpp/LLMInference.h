@@ -35,6 +35,8 @@ class LLMInference {
     int64_t _responseGenerationTime = 0;
     long    _responseNumTokens      = 0;
 
+    size_t _prevLen = 0;
+
     // length of context window consumed during the conversation
     int _nCtxUsed = 0;
 
@@ -47,6 +49,8 @@ class LLMInference {
     std::string benchModel(int pp, int tg, int pl, int nr);
 
     void addChatMessage(const char* message, const char* role);
+
+    void _updatePrevLen();
 
     float getResponseGenerationTime() const;
 
