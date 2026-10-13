@@ -9,19 +9,22 @@
 #define LOGe(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 void
-LLMInference::loadModel(const char *model_path, float minP, float temperature, bool storeChats, long contextSize,
+LLMInference::loadModel(const char *model_path, float minP, float temperature, float topP, int topK,
+                        float repeatPenalty, bool storeChats, long contextSize,
                         const char *chatTemplate, int nThreads, bool useMmap, bool useMlock) {
     LOGi("loading model with"
          "\n\tmodel_path = %s"
          "\n\tminP = %f"
          "\n\ttemperature = %f"
+         "\n\ttopP = %f"
+         "\n\ttopK = %d"
+         "\n\trepeatPenalty = %f"
          "\n\tstoreChats = %d"
          "\n\tcontextSize = %li"
-         "\n\tchatTemplate = %s"
          "\n\tnThreads = %d"
          "\n\tuseMmap = %d"
          "\n\tuseMlock = %d",
-         model_path, minP, temperature, storeChats, contextSize, chatTemplate, nThreads, useMmap, useMlock);
+         model_path, minP, temperature, topP, topK, repeatPenalty, storeChats, contextSize, nThreads, useMmap, useMlock);
 
     // load dynamic backends
     ggml_backend_load_all();
@@ -52,6 +55,11 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, b
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
     sampler_params.no_perf = true; // disable performance metrics
     _sampler = llama_sampler_chain_init(sampler_params);
+
+    llama_sampler_chain_add(_sampler, llama_sampler_init_penalties(256, repeatPenalty, 0.0f, 0.0f));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_top_k(topK));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_top_p(topP, 1));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_min_p(minP, 1));
     llama_sampler_chain_add(_sampler, llama_sampler_init_temp(temperature));
     llama_sampler_chain_add(_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 

@@ -137,6 +137,9 @@ class SmolLM {
      *
      * @property minP The minimum probability for a token to be considered. Also known as top-P
      *   sampling. (Default: 0.1f)
+     * @property topP selects the next token based on cumulative probability
+     * @property topK limits the model to choosing the next word from the K most likely options
+     * @property repeatPenalty is a single multiplier applied to previously generated tokens. 1.0 means no penalty; values above 1.0 penalise repeats.
      * @property temperature The temperature for sampling. Higher values make the output more
      *   random. (Default: 0.8f)
      * @property storeChats Whether to store the chat history in memory. If true, the LLM will
@@ -156,6 +159,9 @@ class SmolLM {
     data class InferenceParams(
         val minP: Float = 0.1f,
         val temperature: Float = 0.8f,
+        val topP: Float = 0.95f,
+        val topK: Int = 40,
+        val repeatPenalty: Float = 1.1f,
         val storeChats: Boolean = true,
         val contextSize: Long? = null,
         val chatTemplate: String? = null,
@@ -189,6 +195,9 @@ class SmolLM {
                     modelPath,
                     params.minP,
                     params.temperature,
+                    params.topP,
+                    params.topK,
+                    params.repeatPenalty,
                     params.storeChats,
                     params.contextSize ?: modelContextSize,
                     params.chatTemplate ?: modelChatTemplate,
@@ -330,6 +339,9 @@ class SmolLM {
         modelPath: String,
         minP: Float,
         temperature: Float,
+        topP: Float,
+        topK: Int,
+        repeatPenalty: Float,
         storeChats: Boolean,
         contextSize: Long,
         chatTemplate: String,
