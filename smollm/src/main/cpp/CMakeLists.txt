@@ -13,8 +13,9 @@ set(VENDOR_DIR ${LLAMA_DIR}/vendor)
 # -fvisibility-inlines-hidden: hide all inline symbols by default
 target_compile_options(
         llama
-        PUBLIC
+        PRIVATE                                # was PUBLIC — leaked into llama-common
         -fvisibility=hidden -fvisibility-inlines-hidden
+        -ffunction-sections -fdata-sections
 )
 # -ffunction-sections: place each function in its own section
 # -fdata-sections: place each data member in its own section
@@ -61,12 +62,13 @@ function(build_library target_name)
     # -fdata-sections: place each data member in its own section
     target_compile_options(
             ${target_name}
-            PUBLIC
+            PRIVATE
+            -fvisibility=hidden -fvisibility-inlines-hidden
             -ffunction-sections -fdata-sections
     )
     target_link_libraries(
             ${target_name}
-            android log llama common vulkan
+            android log llama llama-common vulkan
     )
     # -Wl,--gc-sections: remove unused sections (garbage collection)
     # -flto: link-time optimization
