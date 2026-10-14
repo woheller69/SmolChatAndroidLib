@@ -16,7 +16,7 @@ A lightweight Android library for running GGUF LLMs on-device using **llama.cpp*
 - **Streaming API:** Get responses as a Kotlin `Flow<String>` for real-time token streaming
 - **Chat History:** Manage user/system/assistant messages with optional persistence
 - **Jinja2 Templates:** Full support for Jinja2 chat templates (with sensible defaults)
-- **Configurable Inference:** Control temperature, minP, threads, context size, mmap/mlock settings
+- **Configurable Inference:** Control temperature, minP, topP, topK, repeatPenalty, threads, context size, mmap/mlock settings
 - **Benchmarking:** Built-in model benchmarking utility (`benchModel`)
 - **Coroutine-Friendly:** `load()` is a suspending function for easy integration
 
@@ -44,7 +44,7 @@ In your module's `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'com.github.woheller69:SmolChatAndroidLib:V1.5'
+    implementation 'com.github.woheller69:SmolChatAndroidLib:V2.0'
 }
 ```
 
@@ -127,13 +127,17 @@ Always call `close()` in `onDestroy()` to release native resources.
 | `fun getContextLengthUsed(): Int` | Get current context window usage. |
 | `fun benchModel(pp, tg, pl, nr): String` | Run benchmark and return timings. |
 | `fun close()` | Unload model and release native resources. |
+| `fun stop()` | Stop completion during token generation phase. |
 
 ### InferenceParams
 
 ```kotlin
 data class InferenceParams(
-    val minP: Float = 0.1f,           // Minimum token probability
+    val minP: Float = 0.1f,            // Minimum token probability
     val temperature: Float = 0.8f,     // Sampling temperature
+    val topP: Float = 0.95f,           // Selects the next token based on cumulative probability
+    val topK: Int = 40,                // Limits the model to choosing the next word from the K most likely options
+    val repeatPenalty: Float = 1.1f,   // Penalize repeats
     val storeChats: Boolean = true,    // Persist chat history
     val contextSize: Long? = null,     // Override model context size
     val chatTemplate: String? = null,  // Jinja2 template override
