@@ -43,7 +43,8 @@ class LLMInference {
     bool _isValidUtf8(const char* response);
 
   public:
-    void loadModel(const char* modelPath, float minP, float temperature, bool storeChats, long contextSize,
+    void loadModel(const char* modelPath, float minP, float temperature, float topP, int topK,
+                   float repeatPenalty, bool storeChats, long contextSize,
                    const char* chatTemplate, int nThreads, bool useMmap, bool useMlock);
 
     std::string benchModel(int pp, int tg, int pl, int nr);

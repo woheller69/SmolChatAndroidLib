@@ -3,7 +3,7 @@
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_io_shubham0204_smollm_SmolLM_loadModel(JNIEnv* env, jobject thiz, jstring modelPath, jfloat minP,
-                                            jfloat temperature, jboolean storeChats, jlong contextSize,
+                                            jfloat temperature, jfloat topP, jint topK, jfloat repeatPenalty, jboolean storeChats, jlong contextSize,
                                             jstring chatTemplate, jint nThreads, jboolean useMmap, jboolean useMlock) {
     jboolean    isCopy           = true;
     const char* modelPathCstr    = env->GetStringUTFChars(modelPath, &isCopy);
@@ -11,7 +11,7 @@ Java_io_shubham0204_smollm_SmolLM_loadModel(JNIEnv* env, jobject thiz, jstring m
     const char* chatTemplateCstr = env->GetStringUTFChars(chatTemplate, &isCopy);
 
     try {
-        llmInference->loadModel(modelPathCstr, minP, temperature, storeChats, contextSize, chatTemplateCstr, nThreads,
+        llmInference->loadModel(modelPathCstr, minP, temperature, topP, topK, repeatPenalty, storeChats, contextSize, chatTemplateCstr, nThreads,
                                 useMmap, useMlock);
     } catch (std::exception& error) {
         env->ReleaseStringUTFChars(modelPath, modelPathCstr);

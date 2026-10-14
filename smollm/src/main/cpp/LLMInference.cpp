@@ -9,27 +9,36 @@
 #define LOGe(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 void
-LLMInference::loadModel(const char *model_path, float minP, float temperature, bool storeChats, long contextSize,
+LLMInference::loadModel(const char *model_path, float minP, float temperature, float topP, int topK,
+                        float repeatPenalty, bool storeChats, long contextSize,
                         const char *chatTemplate, int nThreads, bool useMmap, bool useMlock) {
     LOGi("loading model with"
          "\n\tmodel_path = %s"
          "\n\tminP = %f"
          "\n\ttemperature = %f"
+         "\n\ttopP = %f"
+         "\n\ttopK = %d"
+         "\n\trepeatPenalty = %f"
          "\n\tstoreChats = %d"
          "\n\tcontextSize = %li"
-         "\n\tchatTemplate = %s"
          "\n\tnThreads = %d"
          "\n\tuseMmap = %d"
          "\n\tuseMlock = %d",
-         model_path, minP, temperature, storeChats, contextSize, chatTemplate, nThreads, useMmap, useMlock);
+         model_path, minP, temperature, topP, topK, repeatPenalty, storeChats, contextSize, nThreads, useMmap, useMlock);
 
     // load dynamic backends
     ggml_backend_load_all();
 
     // create an instance of llama_model
     llama_model_params model_params = llama_model_default_params();
-    model_params.use_mmap = useMmap;
-    model_params.use_mlock = useMlock;
+    // Upstream replaced the use_mmap/use_mlock booleans with a single load_mode
+    // enum; the two flags map onto its combinations one-for-one.
+    if (useMmap) {
+        model_params.load_mode = useMlock ? LLAMA_LOAD_MODE_MMAP_MLOCK : LLAMA_LOAD_MODE_MMAP;
+    } else {
+        model_params.load_mode = useMlock ? LLAMA_LOAD_MODE_MLOCK : LLAMA_LOAD_MODE_NONE;
+    }
+
     _model = llama_model_load_from_file(model_path, model_params);
     if (!_model) {
         LOGe("failed to load model from %s", model_path);
@@ -52,6 +61,14 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, b
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
     sampler_params.no_perf = true; // disable performance metrics
     _sampler = llama_sampler_chain_init(sampler_params);
+
+    // n_vocab is a new leading argument on this sampler upstream.
+    const int32_t nVocab = llama_vocab_n_tokens(llama_model_get_vocab(_model));
+
+    llama_sampler_chain_add(_sampler, llama_sampler_init_penalties(nVocab, 256, repeatPenalty, 0.0f, 0.0f));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_top_k(topK));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_top_p(topP, 1));
+    llama_sampler_chain_add(_sampler, llama_sampler_init_min_p(minP, 1));
     llama_sampler_chain_add(_sampler, llama_sampler_init_temp(temperature));
     llama_sampler_chain_add(_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
