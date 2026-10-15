@@ -44,7 +44,7 @@ In your module's `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'com.github.woheller69:SmolChatAndroidLib:V2.0'
+    implementation 'com.github.woheller69:SmolChatAndroidLib:V2.1'
 }
 ```
 
