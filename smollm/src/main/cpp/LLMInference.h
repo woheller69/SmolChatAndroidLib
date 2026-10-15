@@ -13,7 +13,7 @@ class LLMInference {
     llama_token    _currToken;
     llama_batch*   _batch;
 
-    llama_batch g_batch;
+    common_batch g_batch;
 
     // container to store user/assistant messages in the chat
     std::vector<llama_chat_message> _messages;

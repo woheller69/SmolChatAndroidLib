@@ -293,7 +293,7 @@ LLMInference::~LLMInference() {
 
 std::string
 LLMInference::benchModel(int pp, int tg, int pl, int nr) {
-    g_batch     = llama_batch_init(pp, 0, pl);
+    common_batch g_batch(this->_ctx);
     auto pp_avg = 0.0;
     auto tg_avg = 0.0;
     auto pp_std = 0.0;
@@ -307,18 +307,18 @@ LLMInference::benchModel(int pp, int tg, int pl, int nr) {
     for (nri = 0; nri < nr; nri++) {
         LOGi("Benchmark prompt processing (pp = %d)", pp);
 
-        common_batch_clear(g_batch);
+        g_batch.clear();
 
         const int n_tokens = pp;
         for (i = 0; i < n_tokens; i++) {
-            common_batch_add(g_batch, 1, i, { 0 }, false);
+            g_batch.add(1, i, 0, false);
         }
 
-        g_batch.logits[g_batch.n_tokens - 1] = true;
+        g_batch.set_output(g_batch.size() - 1, true);   // was: g_batch.logits[g_batch.n_tokens - 1] = true;
         llama_memory_clear(llama_get_memory(this->_ctx), false);
 
         const auto t_pp_start = ggml_time_us();
-        if (llama_decode(this->_ctx, g_batch) != 0) {
+        if (llama_process(this->_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get()) != 0) {
             LOGe("llama_decode() failed during prompt processing");
         }
         const auto t_pp_end = ggml_time_us();
@@ -330,12 +330,12 @@ LLMInference::benchModel(int pp, int tg, int pl, int nr) {
         llama_memory_clear(llama_get_memory(this->_ctx), false);
         const auto t_tg_start = ggml_time_us();
         for (i = 0; i < tg; i++) {
-            common_batch_clear(g_batch);
+            g_batch.clear();
             for (j = 0; j < pl; j++) {
-                common_batch_add(g_batch, 0, i, { j }, true);
+                g_batch.add(0, i, j , true);
             }
 
-            if (llama_decode(this->_ctx, g_batch) != 0) {
+            if (llama_process(this->_ctx, LLAMA_PROCESS_TYPE_DECODE, g_batch.get()) != 0) {
                 LOGe("llama_decode() failed during text generation");
             }
         }
@@ -358,7 +358,6 @@ LLMInference::benchModel(int pp, int tg, int pl, int nr) {
         LOGi("pp %f t/s, tg %f t/s", speed_pp, speed_tg);
     }
 
-    llama_batch_free(g_batch);
 
     pp_avg /= double(nr);
     tg_avg /= double(nr);
